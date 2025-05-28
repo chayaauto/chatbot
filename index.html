@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+  <meta charset="UTF-8">
+  <title>צ'אטבוט</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
+    input, button { padding: 10px; margin-top: 10px; width: 100%; }
+    #chat { margin-top: 20px; border: 1px solid #ccc; padding: 10px; min-height: 200px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h2>צ'אטבוט</h2>
+  <input type="text" id="messageInput" placeholder="כתוב הודעה...">
+  <button onclick="sendMessage()">שלח</button>
+  <div id="chat"></div>
+
+  <script>
+    function getParam(name) {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get(name);
+    }
+
+    const defaultApiUrl = "https://hook.eu2.make.com/6xrlk284ndjeohq8hi3m65drs2ne711q";
+    const apiUrl = getParam("api") || defaultApiUrl;
+    const storageKey = "chatbot_thread_id";
+
+    async function sendMessage() {
+      const message = document.getElementById("messageInput").value;
+      if (!message) return;
+
+      const threadId = localStorage.getItem(storageKey) || "";
+      const body = JSON.stringify({
+        thread_id: threadId,
+        message: message
+      });
+
+      try {
+        const res = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body
+        });
+
+        const data = await res.json();
+
+        // שמירת thread_id אם קיים
+        if (data.thread_id) {
+          localStorage.setItem(storageKey, data.thread_id);
+        }
+
+        // הצגת ההודעה שלי והתגובה מהשרת
+        const chatBox = document.getElementById("chat");
+        chatBox.innerText += `\n\n🧑‍💼 אני: ${message}`;
+        if (data.response) {
+          chatBox.innerText += `\n🤖 בוט: ${data.response}`;
+        }
+
+        document.getElementById("messageInput").value = "";
+      } catch (error) {
+        alert("שגיאה בשליחה: " + error);
+      }
+    }
+  </script>
+</body>
+</html>
