@@ -4,36 +4,146 @@
   <meta charset="UTF-8">
   <title>צ'אטבוט</title>
   <style>
-    body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
-    input, button { padding: 10px; margin-top: 10px; width: 100%; }
-    #chat { margin-top: 20px; border: 1px solid #ccc; padding: 10px; min-height: 200px; white-space: pre-wrap; }
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      max-width: 600px;
+      margin: auto;
+      direction: rtl;
+    }
+
+    input, button {
+      padding: 10px;
+      margin-top: 10px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    #chat {
+      margin-top: 20px;
+      border: 1px solid #ccc;
+      padding: 10px;
+      min-height: 200px;
+      white-space: normal;
+    }
+
+    .message {
+      margin-top: 10px;
+    }
+
+    label {
+      font-weight: bold;
+      margin-top: 10px;
+      display: block;
+    }
+
+    button[disabled] {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .typing {
+      display: inline-block;
+    }
+
+    .typing span {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      margin-left: 3px;
+      border-radius: 50%;
+      background: #333;
+      animation: blink 1.4s infinite both;
+    }
+
+    .typing span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .typing span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes blink {
+      0% { opacity: .2; }
+      20% { opacity: 1; }
+      100% { opacity: .2; }
+    }
   </style>
 </head>
 <body>
   <h2>צ'אטבוט</h2>
-  <input type="text" id="messageInput" placeholder="כתוב הודעה...">
-  <button onclick="sendMessage()">שלח</button>
+
+  <label for="apiInput">API URL:</label>
+  <input type="text" id="apiInput" placeholder="הזן כתובת API..." />
+
+  <label for="phoneInput">מספר טלפון (מזהה משתמש):</label>
+  <input type="text" id="phoneInput" placeholder="הזן מספר טלפון..." />
+
   <div id="chat"></div>
+  <input type="text" id="messageInput" placeholder="כתוב הודעה...">
+  <button id="sendBtn" onclick="sendMessage()">שלח</button>
 
   <script>
-    function getParam(name) {
+    const storageKey = "chatbot_thread_id";
+    const apiStorageKey = "chatbot_api_url";
+
+    function getParamOrStoredApi() {
       const urlParams = new URLSearchParams(window.location.search);
-      return urlParams.get(name);
+      const paramApi = urlParams.get("api");
+      const storedApi = localStorage.getItem(apiStorageKey);
+      return paramApi || storedApi || "https://hook.eu2.make.com/6xrlk284ndjeohq8hi3m65drs2ne711q";
     }
 
-    const defaultApiUrl = "https://hook.eu2.make.com/6xrlk284ndjeohq8hi3m65drs2ne711q";
-    const apiUrl = getParam("api") || defaultApiUrl;
-    const storageKey = "chatbot_thread_id";
+    document.getElementById("apiInput").value = getParamOrStoredApi();
+
+    function decodeBase64Utf8(base64) {
+      try {
+        const binary = atob(base64);
+        const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+        const decoder = new TextDecoder("utf-8");
+        return decoder.decode(bytes);
+      } catch (e) {
+        return "[שגיאה בפענוח Base64]";
+      }
+    }
 
     async function sendMessage() {
-      const message = document.getElementById("messageInput").value;
-      if (!message) return;
+      const phone = document.getElementById("phoneInput").value.trim();
+      const message = document.getElementById("messageInput").value.trim();
+      const apiUrl = document.getElementById("apiInput").value.trim();
+      const chatBox = document.getElementById("chat");
+      const sendBtn = document.getElementById("sendBtn");
+
+      if (!apiUrl || !phone || !message) return;
+
+      sendBtn.disabled = true;
+      const originalText = sendBtn.innerText;
+      sendBtn.innerText = "שולח...";
+      document.getElementById("messageInput").value = "";
+
+      // הצגת הודעת המשתמש מיד
+      chatBox.innerHTML += `<div class="message"><strong>🧑‍💼 אני:</strong> ${message}</div>`;
+
+      // הוספת בלוק אנימציית הקלדה
+      const typingId = `typing-${Date.now()}`;
+      chatBox.innerHTML += `
+        <div class="message" id="${typingId}">
+          <strong>🤖 בוט:</strong>
+          <span class="typing">
+            <span></span><span></span><span></span>
+          </span>
+        </div>`;
+      chatBox.scrollTop = chatBox.scrollHeight;
 
       const threadId = localStorage.getItem(storageKey) || "";
       const body = JSON.stringify({
+        id: phone,
         thread_id: threadId,
         message: message
       });
+
+      localStorage.setItem(apiStorageKey, apiUrl);
 
       try {
         const res = await fetch(apiUrl, {
@@ -44,23 +154,27 @@
 
         const data = await res.json();
 
-        // שמירת thread_id אם קיים
         if (data.thread_id) {
           localStorage.setItem(storageKey, data.thread_id);
         }
 
-        // הצגת ההודעה שלי והתגובה מהשרת
-        const chatBox = document.getElementById("chat");
-        chatBox.innerText += `\n\n🧑‍💼 אני: ${message}`;
-        if (data.response) {
-          chatBox.innerText += `\n🤖 בוט: ${data.response}`;
-        }
-
-        document.getElementById("messageInput").value = "";
+        const response = data.response ? decodeBase64Utf8(data.response) : "[אין תגובה]";
+        document.getElementById(typingId).innerHTML = `<strong>🤖 בוט:</strong> ${response}`;
       } catch (error) {
-        alert("שגיאה בשליחה: " + error);
+        document.getElementById(typingId).innerHTML = `<strong>⚠️ שגיאה:</strong> ${error.message}`;
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerText = originalText;
+        chatBox.scrollTop = chatBox.scrollHeight;
       }
     }
+
+    document.getElementById("messageInput").addEventListener("keydown", function(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        sendMessage();
+      }
+    });
   </script>
 </body>
 </html>
